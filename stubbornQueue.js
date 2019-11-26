@@ -13,7 +13,11 @@ class Task {
         this.type = taskType
         this.created = new Date().getTime()
         this.retries = 0
+        this.failures = 0
+        this.lastError = ""
         this.lastRetry = null
+        this.retryNow = false
+        this.awaitingResult = false
     }
 }
 
@@ -22,20 +26,17 @@ var defaultConfig = {
     taskType: "Queue-Task",
     maxTaskAge: (365 * 24 * 60 * 60 * 1000), // 1 year
     maxRetries: 9999,
-
-    processInParallel: true,
-    throwOnTaskTooOld: true,
-    throwOnMaxRetryReached: true,
-
+    maxParallelTasks: 8,
     refreshPeriod: 5000,
     persistPeriod: 5000,
     retryWaitPeriod: 100,
     checkDoneWaitPeriod: 100,
     checkFinishedTimeout: 10000,
-
+    throwOnTaskTooOld: true,
+    throwOnMaxRetryReached: true,
     startTask: function (id, taskParams) {},
-    checkFinished: function (id, taskParams) { return false },
-    checkFinishedAsync: function (id, taskParams, callback) { callback(false) },
+    checkFinished: function (id, taskParams) { return "True, False or Error Message" },
+    checkFinishedAsync: function (id, taskParams, callback) { callback("True, False or Error Message") },
     logger: function(str) { console.log(str) }
 }
 
@@ -43,14 +44,10 @@ defaultConfig.startTask = null
 defaultConfig.checkTaskFinished = null
 defaultConfig.checkTaskFinishedAsync = null
 
-
 class StubbornQueue {
     constructor(config = defaultConfig) {
         this.tasks = {} // { ID: item }
         this.running = false
-        this.tasksToRetry = []
-        this.tasksAwaitingResult = []
-
 
         this.manageWorkerId = "<not started>"
         this.checkDoneWorkerId = "<not started>"
@@ -65,6 +62,8 @@ class StubbornQueue {
         if (!this.checkTaskFinished && !this.checkTaskFinishedAsync)
             throw ReferenceError(this.poolName + ".checkTaskFinished or " +
                 this.poolName + ".checkTaskFinishedAsync must be set")
+
+        _load(this)
     }
 
 	getTasks() {
@@ -107,19 +106,15 @@ class StubbornQueue {
 }
 
 function _manage(queue) {
-    if (queue.tasks.length === 0)
-        return
-
-    if (queue.processInParallel !== true
-        && queue.tasksAwaitingResult.length >= 1)
-        return
-    
     const now = new Date().getTime()
 
-    var toStart = []
+    var tasks = queue.getTasks();
 
-    for (let i = 0; i < queue.tasks.length; i++) {
-        const task = queue.tasks[i];
+    if (tasks.length === 0)
+        return
+
+    for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
 
         if (task.state === states.done) {
             delete queue.tasks[i]
@@ -148,40 +143,86 @@ function _manage(queue) {
             }
         }
 
-        if (!queue.processInParallel && toStart.length > 0)
-            break
+        if (queue.maxParallelTasks <= tasks.filter(t=> t.retryNow || t.awaitingResult).length)
+            continue
 
         if (task.state === states.enqueued) {
-            toStart.push(task)
+            task.retryNow = true
             continue
         }
         if (task.state === states.failed
             && task.lastRetry + queue.retryWaitPeriod < now) {
-            toStart.push(task)
+            task.retryNow = true
             continue
         }
         if (task.state === states.started
             && task.lastRetry + queue.checkFinishedTimeout < now
             && task.lastRetry + queue.retryWaitPeriod < now) {
-            toStart.push(task)
+            task.retryNow = true
             continue
         }
     }
+}
 
-    for (let i = 0; i < toStart.length; i++)
-        queue.tasksToRetry.push(toStart[i])
+function _setTaskOutcome(queue, task, outcome) {
+    if (!task.id in queue.tasks)
+        return // Task was removed
+    task = queue.tasks[task.id]
+
+    if(typeof(outcome) === "boolean") {
+        if (outcome) {
+            task.state = states.done
+        }
+        else { /* nothing */ }
+    }
+    else if (typeof(outcome) === "string") {
+        task.state = states.failed
+        task.failures += 1
+        task.lastError = 0
+    }
 }
 
 function _checkDone(queue) {
-    // TODO : implement
+    var checkTask = (task) => {
+        if (queue.checkFinishedAsync)
+            queue.checkFinishedAsync(task.id, task.taskParams,
+                (outcome) => _setTaskOutcome(queue, task, outcome))
+        else
+            _setTaskOutcome(queue, task,
+                queue.checkFinished(task.id, task.taskParams))
+    }
+
+    var tasks = queue.getTasks().filter(t => t.awaitingResult)
+    tasks.forEach(task => checkTask);
 }
 
 function _retry(queue) {
-    // TODO : implement
+    var tasks = queue.getTasks().filter(t => t.retryNow)
+    tasks.forEach(task => {
+        queue.startTask(task.id, task.taskParams)
+        task.lastRetry = new Date().getTime()
+        task.retries++
+    });
 }
 
+var fs = require("fs")
+
 function _persist(queue) {
-    // TODO : implement
+    var fileName = queue.name + " - " + queue.taskType + ".json"
+    var state = JSON.stringify(queue.tasks)
+    fs.write(fileName, state, (err) => { if(err) throw err })
+}
+
+function _load(queue) {
+    var fileName = queue.name + " - " + queue.taskType + ".json"
+    fs.read(filename, (err, data)=> { 
+        if(err) throw err
+        var loadedTasks = JSON.parse(data)
+        for (const i in loadedTasks) {
+            if(!queue[i])
+                queue[i] = loadedTasks[i]
+        }
+    })
 }
 
 module.exports = StubbornQueue
