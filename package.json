@@ -18,5 +18,8 @@
   "bugs": {
     "url": "https://github.com/BitcoinSofia/stubborn-queue/issues"
   },
-  "homepage": "https://github.com/BitcoinSofia/stubborn-queue#readme"
+  "homepage": "https://github.com/BitcoinSofia/stubborn-queue#readme",
+  "devDependencies": {
+    "jest": "^24.9.0"
+  }
 }
