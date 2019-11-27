@@ -1,0 +1,22 @@
+{
+  "name": "stubborn-queue",
+  "version": "1.0.0",
+  "description": "A queue for (parallel) tasks that retries very stubbornly.",
+  "main": "stubbornQueue.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BitcoinSofia/stubborn-queue.git"
+  },
+  "author": "Aleksandar Dinkov",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/BitcoinSofia/stubborn-queue/issues"
+  },
+  "homepage": "https://github.com/BitcoinSofia/stubborn-queue#readme"
+}
