@@ -41,8 +41,8 @@ var defaultConfig = {
 }
 
 defaultConfig.startTask = null
-defaultConfig.checkTaskFinished = null
-defaultConfig.checkTaskFinishedAsync = null
+defaultConfig.checkFinished = null
+defaultConfig.checkFinishedAsync = null
 
 class StubbornQueue {
     constructor(config = defaultConfig) {
@@ -58,10 +58,10 @@ class StubbornQueue {
             this[key] = config[key] !== undefined ? config[key] : defaultConfig[key]
 
         if (!this.startTask)
-            throw ReferenceError(this.poolName + ".startTask must be set")
-        if (!this.checkTaskFinished && !this.checkTaskFinishedAsync)
-            throw ReferenceError(this.poolName + ".checkTaskFinished or " +
-                this.poolName + ".checkTaskFinishedAsync must be set")
+            throw ReferenceError(this.name + ".startTask must be set")
+        if (!this.checkFinished && !this.checkFinishedAsync)
+            throw ReferenceError(this.name + ".checkFinished or " +
+                this.name + ".checkFinishedAsync must be set")
 
         _load(this)
     }
@@ -215,14 +215,15 @@ function _persist(queue) {
 
 function _load(queue) {
     var fileName = queue.name + " - " + queue.taskType + ".json"
-    fs.read(filename, (err, data)=> { 
-        if(err) throw err
-        var loadedTasks = JSON.parse(data)
-        for (const i in loadedTasks) {
-            if(!queue[i])
-                queue[i] = loadedTasks[i]
-        }
-    })
+    if(fs.existsSync(fileName))
+        fs.read(fileName, (err, data)=> { 
+            if(err) throw err
+            var loadedTasks = JSON.parse(data)
+            for (const i in loadedTasks) {
+                if(!queue[i])
+                    queue[i] = loadedTasks[i]
+            }
+        })
 }
 
 module.exports = StubbornQueue
