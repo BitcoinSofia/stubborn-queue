@@ -68,26 +68,3 @@ test("Correct value is passed for CheckFinishedAsync", done => {
     }, 300);
  });
 
-test("IDs are unique AND don't change", done => { 
-    var ids = []
-    var queue = createQueue({
-        maxParallelTasks: 5000,
-        maxTaskAge: 5000,
-        checkFinished: ((i, t) => {
-            ids.push(i)
-            return true
-        })
-    })
-
-    queue.start()
-    for (let i = 0; i < 5000; i++)
-        queue.push(i)
-
-    setTimeout(() => {
-        var idsCounted = {}
-        expect(ids.length).toBe(5000)
-        queue.stop()
-        done()
-    }, 1500);
- });
-

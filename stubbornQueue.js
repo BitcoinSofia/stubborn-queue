@@ -37,12 +37,14 @@ var defaultConfig = {
     startTask: function (id, taskParams) {},
     checkFinished: function (id, taskParams) { return "True, False or Error Message" },
     checkFinishedAsync: function (id, taskParams, callback) { callback("True, False or Error Message") },
-    logger: function(str) { console.log(str) }
+    logger: function(str) { console.log(str) },
+    errorHandler: function(error) {} 
 }
 
 defaultConfig.startTask = null
 defaultConfig.checkFinished = null
 defaultConfig.checkFinishedAsync = null
+defaultConfig.errorHandler = null
 
 class StubbornQueue {
     constructor(config = defaultConfig) {
@@ -58,10 +60,10 @@ class StubbornQueue {
             this[key] = config[key] !== undefined ? config[key] : defaultConfig[key]
 
         if (!this.startTask)
-            throw ReferenceError(this.name + ".startTask must be set")
+            _raiseError(queue, ReferenceError(this.name + ".startTask must be set"))
         if (!this.checkFinished && !this.checkFinishedAsync)
-            throw ReferenceError(this.name + ".checkFinished or " +
-                this.name + ".checkFinishedAsync must be set")
+            _raiseError(queue, ReferenceError(this.name + ".checkFinished or " +
+                this.name + ".checkFinishedAsync must be set"))
 
         _load(this)
     }
@@ -117,30 +119,28 @@ function _manage(queue) {
         const task = tasks[i];
 
         if (task.state === states.done) {
-            delete queue.tasks[i]
+            delete queue.tasks[task.id]
             continue
         }
 
         if (task.retries >= queue.maxRetries) {
             var message = "Max retries reached on Task #" + task.id + " : " + task.value
-            if (queue.throwOnMaxRetryReached) 
-                throw new Error(message)
-            else {
+            delete queue.tasks[task.id]
+            if (queue.throwOnMaxRetryReached)
+                _raiseError(queue, new Error(message))
+            else
                 queue.logger(message)
-                delete queue.tasks[i]
-                continue
-            }
+            continue
         }
 
         if (task.created + queue.maxTaskAge < now) {
             var message = "Max age reached on Task #" + task.id + " : " + task.value
+            delete queue.tasks[task.id]
             if (queue.throwOnTaskTooOld)
-                throw new Error(message)
-            else {
+                _raiseError(queue, new Error(message))
+            else
                 queue.logger(message)
-                delete queue.tasks[i]
-                continue
-            }
+            continue
         }
 
         if (queue.maxParallelTasks <= tasks.filter(t=> t.retryNow || t.awaitingResult).length)
@@ -177,7 +177,8 @@ function _setTaskOutcome(queue, task, outcome) {
         }
         else { /* nothing */ }
     }
-    else if (typeof(outcome) === "string") {
+    else {
+        outcome = outcome.toString()
         task.state = states.failed
         task.awaitingResult = false
         task.failures += 1
@@ -215,20 +216,27 @@ var fs = require("fs")
 function _persist(queue) {
     var fileName = queue.name + " - " + queue.taskType + ".json"
     var state = JSON.stringify(queue.tasks)
-    fs.write(fileName, state, (err) => { if(err) throw err })
+    fs.write(fileName, state, (err) => { if(err) _raiseError(queue, err) })
 }
 
 function _load(queue) {
     var fileName = queue.name + " - " + queue.taskType + ".json"
     if(fs.existsSync(fileName))
         fs.read(fileName, (err, data)=> { 
-            if(err) throw err
+            if(err) _raiseError(queue, err)
             var loadedTasks = JSON.parse(data)
             for (const i in loadedTasks) {
                 if(!queue[i])
                     queue[i] = loadedTasks[i]
             }
         })
+}
+
+function _raiseError(queue, error) {
+    if (queue.errorHandler)
+        queue.errorHandler(error)
+    else
+        throw error
 }
 
 module.exports = StubbornQueue
