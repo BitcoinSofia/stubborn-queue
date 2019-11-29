@@ -172,13 +172,16 @@ function _setTaskOutcome(queue, task, outcome) {
     if(typeof(outcome) === "boolean") {
         if (outcome) {
             task.state = states.done
+            task.awaitingResult = false
+            task.retryNow = false
         }
         else { /* nothing */ }
     }
     else if (typeof(outcome) === "string") {
         task.state = states.failed
+        task.awaitingResult = false
         task.failures += 1
-        task.lastError = 0
+        task.lastError = outcome
     }
 }
 
@@ -193,7 +196,7 @@ function _checkDone(queue) {
     }
 
     var tasks = queue.getTasks().filter(t => t.awaitingResult)
-    tasks.forEach(task => checkTask);
+    tasks.forEach(checkTask);
 }
 
 function _retry(queue) {
@@ -202,6 +205,8 @@ function _retry(queue) {
         queue.startTask(task.id, task.taskParams)
         task.lastRetry = new Date().getTime()
         task.retries++
+        task.retryNow = false
+        task.awaitingResult = true
     });
 }
 

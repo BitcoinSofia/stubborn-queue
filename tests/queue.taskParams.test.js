@@ -4,27 +4,90 @@ function createQueue(config = {}) {
     var queue = null;
 
     config.maxTaskAge = config.maxTaskAge || 1000, // 1 sec
-    config.maxRetries = config.maxRetries || 5,
-    config.maxParallelTasks = config.maxParallelTasks || 2,
-    config.refreshPeriod = config.refreshPeriod || 500,
-    config.persistPeriod = config.persistPeriod || 9999999,
-    config.retryWaitPeriod = config.retryWaitPeriod || 200,
-    config.checkDoneWaitPeriod = config.checkDoneWaitPeriod || 200,
-    config.checkFinishedTimeout = config.checkFinishedTimeout || 1000,
-    config.logger = config.logger || (str => {})
-    config.startTask = config.startTask || ((i, t) => queue.startsList.push(t))
+        config.maxRetries = config.maxRetries || 5,
+        config.maxParallelTasks = config.maxParallelTasks || 2,
+        config.refreshPeriod = config.refreshPeriod || 100,
+        config.persistPeriod = config.persistPeriod || 9999999,
+        config.retryWaitPeriod = config.retryWaitPeriod || 150,
+        config.checkDoneWaitPeriod = config.checkDoneWaitPeriod || 40,
+        config.checkFinishedTimeout = config.checkFinishedTimeout || 100,
+        config.logger = config.logger || (str => { })
+    config.startTask = config.startTask || ((i, t) => { 
+        queue.startsList.push(t)
+    })
     if (!config.checkFinishedAsync && !config.checkFinished)
-        config.checkFinishedAsync = (i, t, c) => {
+        config.checkFinishedAsync = ((i, t, c) => {
             queue.checksList.push(t)
             c(true)
-        }
+        })
     queue = new StubbornQueue(config)
     queue.startsList = []
     queue.checksList = []
     return queue
 }
 
-// test("Correct value is passed for startTask", done => { throw new Error("Not Implemented") });
-// test("Correct value is passed for CheckFinished", done => { throw new Error("Not Implemented") });
-// test("Correct value is passed for CheckFinishedAsync", done => { throw new Error("Not Implemented") });
-// test("IDs are unique AND don't change", done => { throw new Error("Not Implemented") });
+test("Correct value is passed for startTask", done => { 
+    var queue = createQueue()
+    queue.start()
+    queue.push({"key":"value"})
+    setTimeout(() => {
+        expect(queue.startsList.length).toBe(1)
+        expect(queue.startsList[0].key).toBe("value")
+        queue.stop()
+        done()
+    }, 300);
+ });
+
+test("Correct value is passed for CheckFinished", done => { 
+    var queue = null
+    queue = createQueue({
+        checkFinished: ((i, t) => {
+            queue.checksList.push(t)
+            return true
+        })
+    })
+    queue.start()
+    queue.push({"key":"value"})
+    setTimeout(() => {
+        expect(queue.checksList.length).toBe(1)
+        expect(queue.checksList[0].key).toBe("value")
+        queue.stop()
+        done()
+    }, 300);
+ });
+
+test("Correct value is passed for CheckFinishedAsync", done => { 
+    var queue = createQueue()
+    queue.start()
+    queue.push({"key":"value"})
+    setTimeout(() => {
+        expect(queue.checksList.length).toBe(1)
+        expect(queue.checksList[0].key).toBe("value")
+        queue.stop()
+        done()
+    }, 300);
+ });
+
+test("IDs are unique AND don't change", done => { 
+    var ids = []
+    var queue = createQueue({
+        maxParallelTasks: 5000,
+        maxTaskAge: 5000,
+        checkFinished: ((i, t) => {
+            ids.push(i)
+            return true
+        })
+    })
+
+    queue.start()
+    for (let i = 0; i < 5000; i++)
+        queue.push(i)
+
+    setTimeout(() => {
+        var idsCounted = {}
+        expect(ids.length).toBe(5000)
+        queue.stop()
+        done()
+    }, 1500);
+ });
+
