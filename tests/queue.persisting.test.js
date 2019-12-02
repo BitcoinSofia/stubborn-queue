@@ -1,24 +1,25 @@
 const StubbornQueue = require('../stubbornQueue');
+const fs = require("fs")
 
 function createQueue(config = {}) {
     var queue = null;
 
-    config.maxTaskAge = config.maxTaskAge || 1000, // 1 sec
-        config.maxRetries = config.maxRetries || 5,
-        config.maxParallelTasks = config.maxParallelTasks || 2,
-        config.refreshPeriod = config.refreshPeriod || 100,
-        config.persistPeriod = config.persistPeriod || 9999999,
-        config.retryWaitPeriod = config.retryWaitPeriod || 150,
-        config.checkDoneWaitPeriod = config.checkDoneWaitPeriod || 40,
-        config.checkFinishedTimeout = config.checkFinishedTimeout || 100,
-        config.logger = config.logger || (str => { })
+    config.maxTaskAge = config.maxTaskAge || 100000, // 100 sec
+    config.maxRetries = config.maxRetries || 500,
+    config.maxParallelTasks = config.maxParallelTasks || 1,
+    config.refreshPeriod = config.refreshPeriod || 50000, // 50 sec
+    config.persistPeriod = config.persistPeriod || 50,
+    config.retryWaitPeriod = config.retryWaitPeriod || 15000, // 15 sec
+    config.checkDoneWaitPeriod = config.checkDoneWaitPeriod || 10000, // 10 sec
+    config.checkFinishedTimeout = config.checkFinishedTimeout || 10000 // 10 sec,
+    config.logger = config.logger || (str => { })
     config.startTask = config.startTask || ((i, t) => { 
         queue.startsList.push(t)
     })
     if (!config.checkFinishedAsync && !config.checkFinished)
         config.checkFinishedAsync = ((i, t, c) => {
             queue.checksList.push(t)
-            c(true)
+            c(false)
         })
     queue = new StubbornQueue(config)
     queue.startsList = []
@@ -26,5 +27,62 @@ function createQueue(config = {}) {
     return queue
 }
 
-// test("persisting works", done => { throw new Error("Not Implemented") });
-// test("loading works", done => { throw new Error("Not Implemented") });
+var expectedParams = [
+    {taskData: 42},
+    "{taskData: 42}",
+    {taskData: "42"}
+].sort()
+
+test("persisting works", done => {
+    var queue = createQueue({
+        name:"SaveTestQueue",
+        taskType:"SavedTask",
+        loadFromFile : false,
+        persistToFile : true
+    });
+
+    for (let i = 0; i < expectedParams.length; i++)
+        queue.push(expectedParams[i])
+
+    queue.start()
+
+    setTimeout(() => {
+        fs.open("./SaveTestQueue - SavedTask.json", "r", (err, fd) => {
+            var text = fs.readFileSync(fd)
+            var data = JSON.parse(text)
+            var taskParams = Object.keys(data).map(i=>data[i].taskParams).sort()
+            expect(taskParams.length).toBe(expectedParams.length)
+            for (let i = 0; i < taskParams.length; i++) {
+                expect(JSON.stringify(taskParams[i]))
+                    .toBe(JSON.stringify(expectedParams[i]))
+            }
+            queue.stop()
+            done()
+        })
+    }, 100);
+});
+
+test("loading works", done => { 
+    
+    var queue = createQueue({
+        name:"SaveTestQueue",
+        taskType:"SavedTask",
+        loadFromFile : true,
+        persistToFile : false
+    });
+
+    queue.start()
+
+    setTimeout(() => {
+        fs.open("./SaveTestQueue - SavedTask.json", "r", (err, fd) => {
+            var taskParams = Object.keys(queue.tasks).map(i=>queue.tasks[i].taskParams).sort()
+            expect(taskParams.length).toBe(expectedParams.length)
+            for (let i = 0; i < taskParams.length; i++) {
+                expect(JSON.stringify(taskParams[i]))
+                    .toBe(JSON.stringify(expectedParams[i]))
+            }
+            queue.stop()
+            done()
+        })
+    }, 100);
+});

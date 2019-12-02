@@ -34,6 +34,8 @@ var defaultConfig = {
     checkFinishedTimeout: 10000,
     throwOnTaskTooOld: true,
     throwOnMaxRetryReached: true,
+    loadFromFile: true,
+    persistToFile: true,
     startTask: function (id, taskParams) {},
     checkFinished: function (id, taskParams) { return "True, False or Error Message" },
     checkFinishedAsync: function (id, taskParams, callback) { callback("True, False or Error Message") },
@@ -65,7 +67,8 @@ class StubbornQueue {
             _raiseError(queue, ReferenceError(this.name + ".checkFinished or " +
                 this.name + ".checkFinishedAsync must be set"))
 
-        _load(this)
+        if(this.loadFromFile)
+            _load(this)
     }
 
 	getTasks() {
@@ -86,10 +89,11 @@ class StubbornQueue {
 		}, this.checkDoneWaitPeriod)
 		this.retryWorkerId = setInterval(() => {
 			_retry(this)
-		}, this.retryWaitPeriod)
-		this.persistingWorkerId = setInterval(() => {
-			_persist(this)
-		}, this.persistPeriod)
+        }, this.retryWaitPeriod)
+        if(this.persistToFile)
+            this.persistingWorkerId = setInterval(() => {
+                _persist(this)
+            }, this.persistPeriod)
     }
 
 	stop() {
@@ -97,7 +101,8 @@ class StubbornQueue {
 		clearInterval(this.manageWorkerId)
 		clearInterval(this.checkDoneWorkerId)
 		clearInterval(this.retryWorkerId)
-		clearInterval(this.persistingWorkerId)
+        if(this.persistToFile)
+		    clearInterval(this.persistingWorkerId)
 	}
 
     push(taskParams) {
@@ -214,21 +219,27 @@ function _retry(queue) {
 var fs = require("fs")
 
 function _persist(queue) {
-    var fileName = queue.name + " - " + queue.taskType + ".json"
+    var fileName = "./" + queue.name + " - " + queue.taskType + ".json"
     var state = JSON.stringify(queue.tasks)
-    fs.write(fileName, state, (err) => { if(err) _raiseError(queue, err) })
+    fs.open(fileName, 'w', function(err, fd) {
+        if(err) _raiseError(queue, err)
+        fs.write(fd, state, (err) => { if(err) _raiseError(queue, err) })
+    })
 }
 
 function _load(queue) {
     var fileName = queue.name + " - " + queue.taskType + ".json"
     if(fs.existsSync(fileName))
-        fs.read(fileName, (err, data)=> { 
+        fs.open(fileName, 'r', function(err, fd) {
             if(err) _raiseError(queue, err)
-            var loadedTasks = JSON.parse(data)
-            for (const i in loadedTasks) {
-                if(!queue[i])
-                    queue[i] = loadedTasks[i]
-            }
+            fs.readFile(fd, (err, data)=> { 
+                if(err) _raiseError(queue, err)
+                var loadedTasks = JSON.parse(data)
+                for (const i in loadedTasks) {
+                    if(!queue.tasks[i])
+                        queue.tasks[i] = loadedTasks[i]
+                }
+            })
         })
 }
 
