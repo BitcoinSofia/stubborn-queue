@@ -50,7 +50,7 @@ test("CheckFinishedAsync has priority over CheckFinished", done => {
 
 test("CheckFinished delay", done => {
     var flag = true;
-    var queue = true
+    var queue = null
     queue = createQueue({
         checkFinished: ((i, t) => {
             queue.checksList.push(t)
@@ -80,7 +80,7 @@ test("CheckFinished delay", done => {
 
 test("CheckFinishedAsync delay", done => {
     var flag = true;
-    var queue = true
+    var queue = null
     queue = createQueue({
         checkFinishedAsync: ((i, t, c) => {
             queue.checksList.push(t)
@@ -111,28 +111,106 @@ test("CheckFinishedAsync delay", done => {
 
 test("CheckFinishedAsync is indeed async - x10", done => {
 
+    var checksStarted = 0
+    var checksDone = 0
+    var queue = null
+    queue = createQueue({
+        maxParallelTasks: 100,
+        checkFinishedTimeout: 200,
+        checkFinishedAsync: ((i, t, c) => {
+            checksStarted++
+            setTimeout(() => {
+                checksDone++
+                c(true)
+            }, 200);
+        })
+    })
+
+    queue.start()
+    for (let i = 0; i < 10; i++)
+        queue.push("data")
+        
+    setTimeout(() => {
+        expect(checksStarted).toBe(10)
+        expect(checksDone).toBe(0)
+        setTimeout(() => {
+            expect(checksStarted).toBe(10)
+            expect(checksDone).toBe(10)
+            queue.stop()
+            done()
+        }, 220);
+    }, 220);
 });
 
 test("CheckFinishedAsync Fail state", done => {
+    var queue = createQueue({
+        maxParallelTasks: 100,
+        checkDoneWaitPeriod: 20,
+        refreshPeriod: 20,
+        retryWaitPeriod: 200,
+        checkFinishedAsync: ((i, t, c) => {
+            c("Error message")
+        })
+    })
 
+    queue.start()
+    for (let i = 0; i < 10; i++)
+        queue.push("data")
+        
+    setTimeout(() => {
+        var tasks = Object.keys(queue.tasks).map(i => queue.tasks[i])
+        expect(tasks.length).toBe(10)
+        for (const i in tasks) {
+            expect(tasks[i].retries).toBe(1)
+            expect(tasks[i].failures).toBe(1)
+            expect(tasks[i].lastError).toBe("Error message")
+        }
+        setTimeout(() => {
+            expect(tasks.length).toBe(10)
+            for (const i in tasks) {
+                expect(tasks[i].retries).toBe(2)
+                expect(tasks[i].failures).toBe(2)
+                expect(tasks[i].lastError).toBe("Error message")
+            }
+            queue.stop()
+            done()
+        }, 240);
+    }, 240);
 });
 
 test("CheckFinished Fail state", done => {
 
-});
+    var queue = createQueue({
+        maxParallelTasks: 100,
+        checkDoneWaitPeriod: 20,
+        refreshPeriod: 20,
+        retryWaitPeriod: 200,
+        checkFinished: ((i, t) => {
+            return "Error message"
+        })
+    })
 
-test("CheckFinishedAsync unknown state", done => {
-
-});
-
-test("CheckFinished unknown state", done => {
-
-});
-
-test("CheckFinishedAsync timeout", done => {
-
-});
-
-test("CheckFinished timeout", done => {
-
+    queue.start()
+    for (let i = 0; i < 10; i++)
+        queue.push("data")
+        
+    setTimeout(() => {
+        var tasks = Object.keys(queue.tasks).map(i => queue.tasks[i])
+        expect(tasks.length).toBe(10)
+        for (const i in tasks) {
+            expect(tasks[i].retries).toBe(1)
+            expect(tasks[i].failures).toBe(1)
+            expect(tasks[i].lastError).toBe("Error message")
+        }
+        setTimeout(() => {
+            expect(tasks.length).toBe(10)
+            for (const i in tasks) {
+                expect(tasks[i].retries).toBe(2)
+                expect(tasks[i].failures).toBe(2)
+                expect(tasks[i].lastError).toBe("Error message")
+            }
+            queue.stop()
+            done()
+        }, 240);
+    }, 240);
 });

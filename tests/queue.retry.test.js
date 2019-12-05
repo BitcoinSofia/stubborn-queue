@@ -123,6 +123,9 @@ test("Drops on total timeout (if configured)", done => {
     var queue = createQueue({
         checkFinishedAsync: (i,t,c)=>{ /* Callback not called */ },
         maxTaskAge: 200,
+        retryWaitPeriod: 150,
+        checkDoneWaitPeriod: 50,
+        checkFinishedTimeout: 50,
         throwOnTaskTooOld: false,
         throwOnMaxRetryReached: true,
     })
